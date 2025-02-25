@@ -1,0 +1,13 @@
+langchain-iris
+testcontainers-iris
+llama-iris
+llama-index-legacy
+sentence-transformers
+langchain
+fastembed 
+openai 
+tiktoken
+python-dotenv
+pandas
+ipykernel
+setuptools
