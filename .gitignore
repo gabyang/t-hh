@@ -2,3 +2,6 @@ hh-venv
 .env
 install
 __pycache__
+data
+broken
+videos
