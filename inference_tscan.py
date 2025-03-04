@@ -70,20 +70,25 @@ def run_inference_on_folder(
     print("Number of clips:", clips.shape[0])
 
     # 5) Inference
-    all_ppg_signals = []  # store rPPG predictions for each clip
+    all_ppg_signals = []
     with torch.no_grad():
         for start_idx in range(0, len(clips), batch_size):
             batch_clips = clips[start_idx : start_idx + batch_size]
-            # shape: (batch_size, frame_depth, C, H, W)
+            
+            # Debug print to check dimensions
+            print(f"Initial batch shape: {batch_clips.shape}")
+            
+            # Reorder dimensions and ensure correct size
+            batch_clips = np.transpose(batch_clips, (0, 2, 1, 3, 4))
             batch_clips_torch = torch.from_numpy(batch_clips).float().to(device)
-            # Reorder dims to (batch_size, frame_depth, channels, H, W)
-            # If your array is already that order, skip this step.
-
+            
+            # Debug print after transformation
+            print(f"Transformed batch shape: {batch_clips_torch.shape}")
+            
             # Forward pass
             ppg_pred = model(batch_clips_torch)
-            # ppg_pred shape: (batch_size, frame_depth)
-
-            # Move to CPU, convert to numpy
+            print(f"Output shape: {ppg_pred.shape}")
+            
             ppg_pred_np = ppg_pred.cpu().numpy()
             all_ppg_signals.append(ppg_pred_np)
 

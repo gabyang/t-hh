@@ -22,7 +22,7 @@ class TSCAN(nn.Module):
         self.apperance_att_conv2 = nn.Conv2d(64, 1, kernel_size=1)
         
         # Final dense layers
-        self.final_dense_1 = nn.Linear(16384, 128)  # 64 channels * height * width
+        self.final_dense_1 = nn.Linear(16384, 128)  # Changed back to 16384
         self.final_dense_2 = nn.Linear(128, 1)
         
         self.dropout = nn.Dropout(drop_rate)
@@ -58,23 +58,21 @@ class TSCAN(nn.Module):
             # Apply attention
             a = a * att
             
-            # Global average pooling
-            m = torch.mean(m, dim=[2, 3])  # [batch, 64]
-            a = torch.mean(a, dim=[2, 3])  # [batch, 64]
-            
             motion_features.append(m)
             appearance_features.append(a)
         
         # Stack features across time
-        motion_features = torch.stack(motion_features, dim=1)  # [batch, T, 64]
-        appearance_features = torch.stack(appearance_features, dim=1)  # [batch, T, 64]
+        motion_features = torch.stack(motion_features, dim=1)  # [batch, T, 64, H, W]
+        appearance_features = torch.stack(appearance_features, dim=1)  # [batch, T, 64, H, W]
         
         # Combine features
-        f = motion_features + appearance_features  # [batch, T, 64]
+        f = motion_features + appearance_features  # [batch, T, 64, H, W]
         
-        # Reshape and final dense layers
-        f = f.reshape(B, -1)  # Flatten: [batch, T * 64]
-        f = self.dropout(f)
+        # Average across time dimension
+        f = torch.mean(f, dim=1)  # [batch, 64, H, W]
+        
+        # Reshape for final dense layers
+        f = f.view(B, -1)  # [batch, 64*H*W]
         f = self.relu(self.final_dense_1(f))
         f = self.dropout(f)
         out = self.final_dense_2(f)  # [batch, 1]

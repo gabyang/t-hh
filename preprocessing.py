@@ -17,13 +17,25 @@ def crop_face(image, face_cascade_path="haarcascade_frontalface_default.xml", sc
     
     return image[y1:y2, x1:x2]
 
-def preprocess_frame(image, resize_dim=(72, 72)):
-    face_img = crop_face(image)
-    face_img = cv2.resize(face_img, resize_dim)
-    face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-
-    mean = np.mean(face_img, axis=(0, 1), keepdims=True)
-    std = np.std(face_img, axis=(0, 1), keepdims=True) + 1e-6
-    face_img = (face_img - mean) / std
-
-    return np.transpose(face_img, (2, 0, 1))  # Convert to (C, H, W) for PyTorch
+def preprocess_frame(frame):
+    """
+    Preprocess a single frame for TSCAN model.
+    
+    Args:
+        frame: BGR image from cv2.imread
+    Returns:
+        Preprocessed frame tensor of shape (C, H, W)
+    """
+    # Convert BGR to RGB
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    # Resize to 16x16
+    frame_resized = cv2.resize(frame_rgb, (16, 16))
+    
+    # Normalize to [0,1] range
+    frame_normalized = frame_resized.astype('float32') / 255.0
+    
+    # Transpose from (H,W,C) to (C,H,W)
+    frame_chw = np.transpose(frame_normalized, (2, 0, 1))
+    
+    return frame_chw
