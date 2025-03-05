@@ -123,29 +123,59 @@ class TSCANInference:
             return np.concatenate(all_ppg_signals, axis=0)
         return None
 
-    def process_video(self, folder_path: str, batch_size: int = 4, 
-                     stride: int = 1) -> None:
+    def _print_summary(self, hr_bpm: float, bvp_analysis: dict) -> None:
         """
-        Process a video folder and display results.
+        Print a comprehensive summary of the analysis results.
         
         Args:
-            folder_path (str): Path to folder containing video frames
-            batch_size (int): Batch size for inference
-            stride (int): Stride for clip creation
+            hr_bpm (float): Estimated heart rate in BPM
+            bvp_analysis (dict): BVP analysis results
         """
+        print("\n" + "="*50)
+        print("ANALYSIS SUMMARY")
+        print("="*50)
+        
+        # Heart Rate Summary
+        print("\nHEART RATE:")
+        print(f"Estimated BPM: {hr_bpm:.1f}")
+        status = "Valid" if hr_bpm > 0 else "Invalid"
+        print(f"Status: {status}")
+        
+        # BVP Summary
+        print("\nBLOOD VOLUME PULSE (BVP):")
+        if bvp_analysis is not None:
+            print(f"Status: {bvp_analysis['message']}")
+            print(f"Amplitude: {bvp_analysis['amplitude']:.3f}")
+            print(f"Peak Quality: {bvp_analysis['peak_quality']:.2f}")
+            print(f"Mean Interval: {bvp_analysis['mean_interval']:.1f} ms")
+            print(f"Variability (CV): {bvp_analysis['interval_cv']:.2f}")
+        else:
+            print("Status: No valid BVP analysis available")
+        
+        print("\n" + "="*50)
+
+    def process_video(self, folder_path, batch_size=32, stride=10):
+        """
+        Process a folder of images to estimate heart rate.
+        
+        Args:
+            folder_path (str): Path to folder containing images
+            batch_size (int): Batch size for model inference
+            stride (int): Stride for overlapping clips
+        """
+        # Run inference to get predicted signals
         predicted_signals = self.run_inference(folder_path, batch_size, stride)
         
-        if predicted_signals is not None:
-            print("Predicted rPPG signals shape:", predicted_signals.shape)
-            
-            # Calculate heart rate
-            hr_bpm, fft_vals, freqs, stats = self.hr_calculator.calculate_heart_rate(predicted_signals)
-            print(f"\nEstimated Heart Rate: {hr_bpm:.1f} BPM")
-            
-            # Plot results
-            self.visualizer.plot_results(predicted_signals, fft_vals, freqs, hr_bpm, stats)
-        else:
-            print("No predictions were made (not enough frames).")
+        # Calculate heart rate and BVP analysis
+        hr_bpm, fft_vals, freqs, stats, bvp_analysis = self.hr_calculator.calculate_heart_rate(predicted_signals)
+        
+        # Visualize results
+        self.visualizer.plot_results(predicted_signals, fft_vals, freqs, hr_bpm, stats, bvp_analysis)
+        
+        # Print summary
+        self._print_summary(hr_bpm, bvp_analysis)
+        
+        return hr_bpm, bvp_analysis
 
 if __name__ == "__main__":
     # 1) Setup
