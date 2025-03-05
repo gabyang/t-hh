@@ -19,23 +19,34 @@ def crop_face(image, face_cascade_path="haarcascade_frontalface_default.xml", sc
 
 def preprocess_frame(frame):
     """
-    Preprocess a single frame for TSCAN model.
-    
-    Args:
-        frame: BGR image from cv2.imread
-    Returns:
-        Preprocessed frame tensor of shape (C, H, W)
+    Preprocess a single frame for TSCAN model with face detection verification.
     """
+    # Face detection
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+    
+    if len(faces) == 0:
+        print("Warning: No face detected in frame")
+        return None
+    
+    # Get the largest face
+    largest_face = max(faces, key=lambda x: x[2] * x[3])
+    x, y, w, h = largest_face
+    
+    # Extract and process face region
+    face_img = frame[y:y+h, x:x+w]
+    
     # Convert BGR to RGB
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    face_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
     
     # Resize to 16x16
-    frame_resized = cv2.resize(frame_rgb, (16, 16))
+    face_resized = cv2.resize(face_rgb, (16, 16))
     
-    # Normalize to [0,1] range
-    frame_normalized = frame_resized.astype('float32') / 255.0
+    # Normalize to [-1, 1] range
+    face_normalized = (face_resized.astype('float32') / 127.5) - 1.0
     
     # Transpose from (H,W,C) to (C,H,W)
-    frame_chw = np.transpose(frame_normalized, (2, 0, 1))
+    face_chw = np.transpose(face_normalized, (2, 0, 1))
     
-    return frame_chw
+    return face_chw
