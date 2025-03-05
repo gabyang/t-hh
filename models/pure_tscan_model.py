@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
 
-class TSCAN(nn.Module):
+class PURE_TSCAN(nn.Module):
+    """
+    TSCAN model for PURE dataset.
+    """
     def __init__(self, frame_depth=10, drop_rate=0.2):
-        super(TSCAN, self).__init__()
+        super(PURE_TSCAN, self).__init__()
         
         # Motion branch (2D convolutions)
         self.motion_conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
