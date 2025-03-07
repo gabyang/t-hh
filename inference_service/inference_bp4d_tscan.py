@@ -3,14 +3,14 @@ import torch
 import numpy as np
 import cv2
 from typing import Optional, Tuple, Dict, List
-from models.bp4d_physnet_model import BP4D_PhysNet
-from preprocessing import FramePreprocessor
+from models.bp4d_tscan_model import BP4D_TSCAN
+from inference_service.preprocessing import FramePreprocessor
 from signal_processing import HeartRateCalculator
 from visualization import SignalVisualizer
 
-class BP4D_PhysNetInference:
+class BP4D_TSCANInference:
     """
-    Inference class for BP4D PhysNet model.
+    Inference class for BP4D TSCAN model.
     """
     def __init__(self, device: Optional[str] = None):
         """
@@ -38,13 +38,13 @@ class BP4D_PhysNetInference:
         
     def _load_model(self) -> torch.nn.Module:
         """
-        Load the BP4D PhysNet model.
+        Load the BP4D TSCAN model.
         
         Returns:
             Loaded PyTorch model
         """
-        model = BP4D_PhysNet()
-        checkpoint_path = "checkpoints/BP4D_PseudoLabel_PhysNet_DiffNormalized.pth"
+        model = BP4D_TSCAN()
+        checkpoint_path = "checkpoints/BP4D_PseudoLabel_TSCAN.pth"
             
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
@@ -68,32 +68,34 @@ class BP4D_PhysNetInference:
         
     def _make_clips(self, frames: List[np.ndarray], clip_length: int = 10) -> torch.Tensor:
         """
-        Create overlapping clips from frames for 3D convolution.
+        Create overlapping clips from frames.
         
         Args:
-            frames: List of preprocessed frames (numpy arrays)
+            frames: List of preprocessed frames
             clip_length: Number of frames per clip
             
         Returns:
-            Tensor of shape (num_clips, channels, time, height, width)
+            Tensor of shape (num_clips, channels, height, width)
         """
-        num_frames = len(frames)
-        num_clips = num_frames - clip_length + 1
+        if len(frames) < clip_length:
+            raise ValueError(f"Insufficient frames: {len(frames)} < {clip_length}")
+            
+        # Stack frames into a single tensor
+        frames_tensor = np.stack(frames)
         
-        # Convert frames to tensors and stack
-        frames_tensor = torch.stack([torch.from_numpy(frame).float() for frame in frames])
-        
-        # Create clips with shape (num_clips, time, channels, height, width)
+        # Create clips
         clips = []
-        for i in range(num_clips):
+        for i in range(len(frames) - clip_length + 1):
             clip = frames_tensor[i:i + clip_length]
+            # Take only the first 3 channels
+            clip = clip[:, :3]  # Shape: (clip_length, 3, 16, 16)
+            # Average across frames to get a single frame
+            clip = np.mean(clip, axis=0)  # Shape: (3, 16, 16)
             clips.append(clip)
-        clips = torch.stack(clips)
-        
-        # Transpose to match expected shape (num_clips, channels, time, height, width)
-        clips = clips.permute(0, 2, 1, 3, 4)
-        
-        return clips.to(self.device)
+            
+        # Stack clips and add batch dimension
+        clips = np.stack(clips)  # Shape: (num_clips, 3, 16, 16)
+        return torch.FloatTensor(clips).to(self.device)
         
     def run_inference(self, frames: List[np.ndarray]) -> np.ndarray:
         """
@@ -147,7 +149,7 @@ class BP4D_PhysNetInference:
             bvp_analysis: Dictionary containing BVP analysis results or None if analysis failed
         """
         print("\nAnalysis Summary:")
-        print(f"Model Type: BP4D PhysNet")
+        print(f"Model Type: BP4D")
         print(f"Estimated Heart Rate: {hr_bpm:.1f} BPM")
         print("\nBVP Analysis:")
         
@@ -167,7 +169,7 @@ class BP4D_PhysNetInference:
 
 def main():
     # Initialize inference
-    inference = BP4D_PhysNetInference()
+    inference = BP4D_TSCANInference()
     
     # Load and preprocess frames
     frames = []

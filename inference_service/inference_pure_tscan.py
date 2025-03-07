@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from typing import Optional, Tuple, Dict, List
 from models.pure_tscan_model import PURE_TSCAN
-from preprocessing import FramePreprocessor
+from inference_service.preprocessing import FramePreprocessor
 from signal_processing import HeartRateCalculator
 from visualization import SignalVisualizer
 
