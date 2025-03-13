@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from process_video import VideoProcessor
-from query import analyze_vital_signs, save_vital_signs, summarize_vital_signs
+from query import analyze_vital_signs, save_vital_signs, summarize_vital_signs, doctor_summarize_vital_signs
 from typing import Tuple, Dict
 import time
 
@@ -39,13 +39,15 @@ def get_help_message() -> str:
         "4. Wait for the analysis results\n"
         "5. Use /reanalyze to process the same video again\n"
         "6. Use /askresults to get medical insights about the results\n"
-        "7. Use /summarize to get a trend analysis of recent measurements\n\n"
+        "7. Use /summarize to get a trend analysis of recent measurements\n"
+        "8. Use /doctorsummarize to get a clinical summary for your doctor\n\n"
         "Commands:\n"
         "/start - Start the bot\n"
         "/help - Show this help message\n"
         "/reanalyze - Process your last video again\n"
         "/askresults - Get medical insights about your results\n"
-        "/summarize - Get a summary of your recent measurements"
+        "/summarize - Get a summary of your recent measurements\n"
+        "/doctorsummarize - Get a clinical summary for your doctor"
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,6 +349,33 @@ async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Need help? Type /help for instructions."
         )
 
+async def doctorsummarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate a clinical summary of vital signs measurements for medical professionals."""
+    user_id = update.effective_user.id
+    
+    processing_message = await update.message.reply_text(
+        "🔄 Generating clinical summary... This may take a moment."
+    )
+    
+    try:
+        # Get clinical summary analysis from ChatGPT
+        summary = doctor_summarize_vital_signs(user_id)
+        
+        # Send the summary
+        await processing_message.edit_text(
+            f"📊 Clinical Summary Report:\n\n{summary}\n\n"
+            "Note: This clinical summary is generated from remote vital signs monitoring data.\n"
+            "Please share this summary with your healthcare provider during your next visit."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating clinical summary: {str(e)}")
+        await processing_message.edit_text(
+            "❌ An error occurred while generating the clinical summary.\n\n"
+            "Please try again later or refer to individual measurements.\n"
+            "Need help? Type /help for instructions."
+        )
+
 async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle invalid inputs (text, stickers, etc.)"""
     await update.message.reply_text(
@@ -373,6 +402,7 @@ def main():
     app.add_handler(CommandHandler("reanalyze", reanalyze_command))
     app.add_handler(CommandHandler("askresults", askresults_command))
     app.add_handler(CommandHandler("summarize", summarize_command))
+    app.add_handler(CommandHandler("doctorsummarize", doctorsummarize_command))
     
     # Add message handlers
     app.add_handler(MessageHandler(filters.VIDEO, handle_image))

@@ -170,3 +170,89 @@ Keep the response clear and simple for non-medical caregivers."""
     except Exception as e:
         logger.error(f"Error generating vital signs summary: {str(e)}")
         return "I apologize, but I'm unable to generate a summary at this moment. Please try again later or consult a healthcare professional for immediate concerns."
+
+def doctor_summarize_vital_signs(user_id: int) -> str:
+    """
+    Generate a clinical summary of vital signs history suitable for medical professionals.
+    
+    Args:
+        user_id: Telegram user ID
+        
+    Returns:
+        str: Clinical summary analysis from ChatGPT
+    """
+    try:
+        # Get summary data
+        summary = vital_signs_store.get_summary_data(user_id)
+        if not summary:
+            return "No history found. Please record some measurements first!"
+
+        # Format the data for ChatGPT
+        measurements = summary['measurements']
+        period_start = datetime.fromisoformat(measurements['period']['start'])
+        period_end = datetime.fromisoformat(measurements['period']['end'])
+        
+        # Calculate time span in days
+        time_span = (period_end - period_start).days
+        
+        prompt = f"""As a medical professional, please provide a clinical summary of this patient's remote vital signs monitoring data:
+
+Monitoring Period: {period_start.strftime('%Y-%m-%d %H:%M')} to {period_end.strftime('%Y-%m-%d %H:%M')} ({time_span} days)
+Number of Measurements: {measurements['count']}
+
+Cardiovascular Parameters:
+1. Heart Rate (BPM):
+   - Current: {measurements['heart_rate']['latest']:.1f}
+   - Range: {measurements['heart_rate']['min']:.1f} - {measurements['heart_rate']['max']:.1f}
+   - Mean: {measurements['heart_rate']['avg']:.1f}
+   - Variability: Present in individual measurements
+
+2. Blood Oxygenation (SpO2):
+   - Current: {measurements['spo2']['latest']:.1f}%
+   - Range: {measurements['spo2']['min']:.1f}% - {measurements['spo2']['max']:.1f}%
+   - Mean: {measurements['spo2']['avg']:.1f}%
+
+Data Quality Metrics:
+- Signal Quality (0-1): {measurements['quality']['avg']:.2f} average
+- Measurement Frequency: {measurements['count']}/{time_span if time_span > 0 else 1} measurements/day
+
+Notable Clinical Observations:
+{chr(10).join(f"- {a['timestamp']}: {a['analysis'][:150]}..." for a in summary['analyses'] if a['analysis'])}
+
+Please provide:
+1. Clinical Assessment:
+   - Vital signs stability and trends
+   - Potential physiological patterns
+   - Data reliability assessment
+
+2. Medical Considerations:
+   - Cardiovascular status indicators
+   - Oxygenation adequacy
+   - Temporal variations and patterns
+
+3. Clinical Recommendations:
+   - Suggested medical follow-up
+   - Additional monitoring needs
+   - Risk stratification considerations
+
+Please format the response in a concise, clinical manner suitable for medical documentation."""
+
+        # Get response from ChatGPT
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a clinical decision support system providing medical summaries for healthcare professionals. Use appropriate medical terminology and focus on clinically relevant patterns and findings. Structure the response in a format familiar to medical professionals."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Lower temperature for more consistent, clinical responses
+            max_tokens=1000
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        logger.error(f"Error generating clinical vital signs summary: {str(e)}")
+        return "Unable to generate clinical summary at this time. Please try again later or refer to individual measurements."
