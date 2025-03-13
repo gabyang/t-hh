@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from llama_index.legacy import SimpleDirectoryReader, StorageContext, ServiceContext
 from llama_index.legacy.indices.vector_store import VectorStoreIndex
 from llama_iris import IRISVectorStore
@@ -151,3 +151,104 @@ class VitalSignsStore:
         except Exception as e:
             logger.error(f"Error retrieving latest result: {str(e)}")
             return None, None
+
+    def get_user_history(self, user_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Retrieve the most recent vital signs results for a user.
+        
+        Args:
+            user_id: Telegram user ID
+            limit: Maximum number of results to return (default: 5)
+            
+        Returns:
+            List[Dict[str, Any]]: List of vital signs results with their analyses
+        """
+        try:
+            # Get all result files for this user
+            results_dir = "vital_signs_results"
+            user_files = glob.glob(os.path.join(results_dir, f"result_{user_id}_*.json"))
+            
+            if not user_files:
+                logger.warning(f"No results found for user {user_id}")
+                return []
+            
+            # Sort files by creation time (newest first)
+            user_files.sort(key=os.path.getctime, reverse=True)
+            
+            # Load the most recent results
+            results = []
+            for file_path in user_files[:limit]:
+                try:
+                    with open(file_path, 'r') as f:
+                        result_data = json.load(f)
+                        results.append(result_data)
+                except Exception as e:
+                    logger.error(f"Error reading file {file_path}: {str(e)}")
+                    continue
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error retrieving user history: {str(e)}")
+            return []
+
+    def get_summary_data(self, user_id: int) -> Dict[str, Any]:
+        """
+        Get summary statistics from user's vital signs history.
+        
+        Args:
+            user_id: Telegram user ID
+            
+        Returns:
+            Dict[str, Any]: Summary statistics
+        """
+        try:
+            # Get recent history
+            history = self.get_user_history(user_id)
+            if not history:
+                return None
+
+            # Calculate summary statistics
+            heart_rates = [r['heart_rate'] for r in history]
+            spo2_values = [r['spo2'] for r in history]
+            quality_scores = [r['metrics']['peak_quality'] for r in history]
+            
+            summary = {
+                'measurements': {
+                    'count': len(history),
+                    'period': {
+                        'start': history[-1]['timestamp'],
+                        'end': history[0]['timestamp']
+                    },
+                    'heart_rate': {
+                        'latest': heart_rates[0],
+                        'min': min(heart_rates),
+                        'max': max(heart_rates),
+                        'avg': sum(heart_rates) / len(heart_rates)
+                    },
+                    'spo2': {
+                        'latest': spo2_values[0],
+                        'min': min(spo2_values),
+                        'max': max(spo2_values),
+                        'avg': sum(spo2_values) / len(spo2_values)
+                    },
+                    'quality': {
+                        'latest': quality_scores[0],
+                        'avg': sum(quality_scores) / len(quality_scores)
+                    }
+                },
+                'analyses': [
+                    {
+                        'timestamp': r['timestamp'],
+                        'analysis': r['analysis']['content'] if r.get('analysis') else None
+                    }
+                    for r in history
+                    if r.get('analysis')
+                ]
+            }
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Error generating summary data: {str(e)}")
+            return None

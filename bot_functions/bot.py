@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from process_video import VideoProcessor
-from query import analyze_vital_signs, save_vital_signs
+from query import analyze_vital_signs, save_vital_signs, summarize_vital_signs
 from typing import Tuple, Dict
 import time
 
@@ -38,12 +38,14 @@ def get_help_message() -> str:
         "3. Stay still while recording the video\n"
         "4. Wait for the analysis results\n"
         "5. Use /reanalyze to process the same video again\n"
-        "6. Use /askresults to get medical insights about the results\n\n"
+        "6. Use /askresults to get medical insights about the results\n"
+        "7. Use /summarize to get a trend analysis of recent measurements\n\n"
         "Commands:\n"
         "/start - Start the bot\n"
         "/help - Show this help message\n"
         "/reanalyze - Process your last video again\n"
-        "/askresults - Get medical insights about your results"
+        "/askresults - Get medical insights about your results\n"
+        "/summarize - Get a summary of your recent measurements"
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -318,6 +320,33 @@ async def askresults_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "Need help? Type /help for instructions."
         )
 
+async def summarize_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate a summary of recent vital signs measurements."""
+    user_id = update.effective_user.id
+    
+    processing_message = await update.message.reply_text(
+        "🔄 Analyzing your measurement history... This may take a moment."
+    )
+    
+    try:
+        # Get summary analysis from ChatGPT
+        summary = summarize_vital_signs(user_id)
+        
+        # Send the summary
+        await processing_message.edit_text(
+            f"📊 Vital Signs History Summary:\n\n{summary}\n\n"
+            "Note: This analysis is for informational purposes only and should not replace professional medical advice.\n"
+            "Always consult healthcare professionals for medical decisions."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating summary: {str(e)}")
+        await processing_message.edit_text(
+            "❌ An error occurred while generating your summary.\n\n"
+            "Please try again later or consult a healthcare professional.\n"
+            "Need help? Type /help for instructions."
+        )
+
 async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle invalid inputs (text, stickers, etc.)"""
     await update.message.reply_text(
@@ -343,6 +372,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reanalyze", reanalyze_command))
     app.add_handler(CommandHandler("askresults", askresults_command))
+    app.add_handler(CommandHandler("summarize", summarize_command))
     
     # Add message handlers
     app.add_handler(MessageHandler(filters.VIDEO, handle_image))
