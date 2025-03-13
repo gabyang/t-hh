@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from process_video import VideoProcessor
-from typing import Tuple
+from typing import Tuple, Dict
 import time
 
 # Setup logging
@@ -25,27 +25,33 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 # Initialize video processor with default model
 video_processor = VideoProcessor(model_type='bp4d_physnet')
 
+# Store last video path for each user
+user_last_video: Dict[int, str] = {}
+
 def get_help_message() -> str:
     """Get the help message for the bot."""
     return (
         "📋 How to use this bot:\n\n"
-        "1. Send a short video of your face\n"
+        "1. Send a short video (max 10 seconds) of your face\n"
         "2. Make sure your face is clearly visible and well-lit\n"
-        "3. Stay still while taking the video\n"
-        "4. Wait for the analysis results\n\n"
+        "3. Stay still while recording the video\n"
+        "4. Wait for the analysis results\n"
+        "5. Use /reanalyze to process the same video again\n\n"
         "Commands:\n"
         "/start - Start the bot\n"
-        "/help - Show this help message"
+        "/help - Show this help message\n"
+        "/reanalyze - Process your last video again"
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a welcome message when the command /start is issued."""
     welcome_message = (
         "👋 Welcome to the Vital Signs Monitor Bot!\n\n"
-        "Send me a photo or video of your face, and I'll analyze it to estimate your:\n"
+        "Send me a short video of your face, and I'll analyze it to estimate your:\n"
         "❤️ Heart Rate\n"
         "🫁 Blood Oxygen Level (SpO2)\n\n"
-        "Make sure your face is well-lit and clearly visible in the image/video.\n\n"
+        "Make sure your face is well-lit and clearly visible in the video.\n"
+        "You can also use /reanalyze to process your last video again!\n\n"
         "Type /help for detailed instructions."
     )
     await update.message.reply_text(welcome_message)
@@ -104,7 +110,7 @@ async def process_video_file(file_path: str) -> Tuple[float, float, dict]:
                 logger.error(f"Error cleaning up data directory: {str(e)}")
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming photos and videos."""
+    """Handle incoming videos."""
     processing_message = None
     file_path = None
     
@@ -120,6 +126,10 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if update.message.video.duration > 10:
                 await processing_message.edit_text(
                     "❌ Video is too long. Please send a video shorter than 10 seconds.\n\n"
+                    "For best results:\n"
+                    "- Keep videos between 5-10 seconds\n"
+                    "- Ensure good lighting\n"
+                    "- Keep your face clearly visible\n\n"
                     "Need help? Type /help for instructions."
                 )
                 return
@@ -128,6 +138,10 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await processing_message.edit_text(
                 "❌ Please send a video of your face.\n\n"
+                "For best results:\n"
+                "- Record 5-10 seconds of video\n"
+                "- Ensure good lighting\n"
+                "- Keep your face clearly visible\n\n"
                 "Need help? Type /help for instructions."
             )
             return
@@ -141,13 +155,20 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await processing_message.edit_text("🔄 Analyzing video frames... This may take a moment.")
         heart_rate, spo2, metrics = await process_video_file(file_path)
 
+        # Store the video path for this user
+        user_id = update.effective_user.id
+        if os.path.exists(os.path.join('videos', os.path.basename(file_path))):
+            user_last_video[user_id] = os.path.join('videos', os.path.basename(file_path))
+
         if heart_rate == 0.0 or metrics['peak_quality'] < 0.5:
             await processing_message.edit_text(
                 "❌ Could not detect clear vital signs.\n\n"
                 "Please try again with:\n"
                 "- Better lighting\n"
                 "- Clearer face visibility\n"
-                "- More stable camera position\n\n"
+                "- More stable camera position\n"
+                "- Record for at least 5 seconds\n\n"
+                "You can also try /reanalyze to process the same video again.\n"
                 "Need help? Type /help for instructions."
             )
             return
@@ -164,7 +185,9 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Heart Rate Variability: {metrics['variability']*100:.1f}%\n"
             f"• Status: {metrics['status']}\n\n"
             "Note: These measurements are estimates and should not be used for medical purposes.\n\n"
-            "Want to measure again? Just send another video!"
+            "Options:\n"
+            "• Send another video for a new measurement\n"
+            "• Use /reanalyze to process this video again"
         )
         await processing_message.edit_text(result_message)
 
@@ -175,7 +198,9 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Please try again with:\n"
                 "- Better lighting\n"
                 "- Clearer face visibility\n"
-                "- More stable camera position\n\n"
+                "- More stable camera position\n"
+                "- Record for at least 5 seconds\n\n"
+                "You can also try /reanalyze to process the same video again.\n"
                 "Need help? Type /help for instructions."
             )
     except Exception as e:
@@ -195,12 +220,78 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a help message when the command /help is issued."""
     await update.message.reply_text(get_help_message())
 
+async def reanalyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reanalyze the last video sent by the user."""
+    user_id = update.effective_user.id
+    
+    if user_id not in user_last_video:
+        await update.message.reply_text(
+            "❌ No previous video found.\n\n"
+            "Please send a video first, then use /reanalyze to process it again!"
+        )
+        return
+        
+    video_path = user_last_video[user_id]
+    if not os.path.exists(video_path):
+        await update.message.reply_text(
+            "❌ Previous video file not found.\n\n"
+            "Please send a new video to analyze!"
+        )
+        user_last_video.pop(user_id)
+        return
+        
+    processing_message = await update.message.reply_text(
+        "🔄 Reanalyzing your previous video... This may take a moment."
+    )
+    
+    try:
+        heart_rate, spo2, metrics = await process_video_file(video_path)
+        
+        if heart_rate == 0.0 or metrics['peak_quality'] < 0.5:
+            await processing_message.edit_text(
+                "❌ Could not detect clear vital signs in the reanalysis.\n\n"
+                "Please try recording a new video with:\n"
+                "- Better lighting\n"
+                "- Clearer face visibility\n"
+                "- More stable camera position\n"
+                "- Record for at least 5 seconds\n\n"
+                "Need help? Type /help for instructions."
+            )
+            return
+            
+        result_message = (
+            "✅ Reanalysis Complete!\n\n"
+            f"❤️ Heart Rate: {heart_rate:.1f} BPM\n"
+            f"🫁 SpO2: {spo2:.1f}%\n\n"
+            "📊 Detailed Metrics:\n"
+            f"• Signal Quality: {metrics['peak_quality']:.2f}/1.00\n"
+            f"• Pulse Amplitude: {metrics['amplitude']:.3f}\n"
+            f"• Mean Interval: {metrics['mean_interval']:.1f}ms\n"
+            f"• Heart Rate Variability: {metrics['variability']*100:.1f}%\n"
+            f"• Status: {metrics['status']}\n\n"
+            "Note: These measurements are estimates and should not be used for medical purposes.\n\n"
+            "Options:\n"
+            "• Send a new video for a new measurement\n"
+            "• Use /reanalyze to process this video again"
+        )
+        await processing_message.edit_text(result_message)
+        
+    except Exception as e:
+        logger.error(f"Error reanalyzing video: {str(e)}")
+        await processing_message.edit_text(
+            "❌ An error occurred while reanalyzing the video.\n\n"
+            "Please try sending a new video instead.\n"
+            "Need help? Type /help for instructions."
+        )
+
 async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle invalid inputs (text, stickers, etc.)"""
     await update.message.reply_text(
         "❌ I can only process videos of faces.\n\n"
-        "Please send me either:\n"
-        "- A short video (max 10 seconds) of your face\n\n"
+        "To use this bot:\n"
+        "1. Send a video (5-10 seconds) of your face\n"
+        "2. Wait for the analysis\n"
+        "3. Use /reanalyze to process the same video again\n\n"
         "Need help? Type /help for instructions."
     )
 
@@ -216,9 +307,10 @@ def main():
     # Add command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("reanalyze", reanalyze_command))
     
     # Add message handlers
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_image))
+    app.add_handler(MessageHandler(filters.VIDEO, handle_image))
     
     # Add handler for invalid inputs (must be last)
     app.add_handler(MessageHandler(filters.ALL, handle_invalid_input))
