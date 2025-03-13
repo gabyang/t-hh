@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from process_video import VideoProcessor
+from query import analyze_vital_signs, save_vital_signs
 from typing import Tuple, Dict
 import time
 
@@ -36,11 +37,13 @@ def get_help_message() -> str:
         "2. Make sure your face is clearly visible and well-lit\n"
         "3. Stay still while recording the video\n"
         "4. Wait for the analysis results\n"
-        "5. Use /reanalyze to process the same video again\n\n"
+        "5. Use /reanalyze to process the same video again\n"
+        "6. Use /askresults to get medical insights about the results\n\n"
         "Commands:\n"
         "/start - Start the bot\n"
         "/help - Show this help message\n"
-        "/reanalyze - Process your last video again"
+        "/reanalyze - Process your last video again\n"
+        "/askresults - Get medical insights about your results"
     )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -173,6 +176,9 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # Save results to vector store
+        save_vital_signs(user_id, heart_rate, spo2, metrics)
+
         # Format and send detailed results
         result_message = (
             "✅ Analysis Complete!\n\n"
@@ -187,7 +193,8 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Note: These measurements are estimates and should not be used for medical purposes.\n\n"
             "Options:\n"
             "• Send another video for a new measurement\n"
-            "• Use /reanalyze to process this video again"
+            "• Use /reanalyze to process this video again\n"
+            "• Use /askresults to get medical insights about these results"
         )
         await processing_message.edit_text(result_message)
 
@@ -284,6 +291,33 @@ async def reanalyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Need help? Type /help for instructions."
         )
 
+async def askresults_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Analyze the last results using ChatGPT and provide medical insights."""
+    user_id = update.effective_user.id
+    
+    processing_message = await update.message.reply_text(
+        "🤖 Analyzing your results with medical AI... This may take a moment."
+    )
+    
+    try:
+        # Get medical insights from ChatGPT using vector store
+        analysis = analyze_vital_signs(user_id)
+        
+        # Send the analysis
+        await processing_message.edit_text(
+            f"📊 Medical Analysis:\n\n{analysis}\n\n"
+            "Note: This analysis is for informational purposes only and should not replace professional medical advice.\n"
+            "Always consult healthcare professionals for medical decisions."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error analyzing results: {str(e)}")
+        await processing_message.edit_text(
+            "❌ An error occurred while analyzing the results.\n\n"
+            "Please try again later or consult a healthcare professional.\n"
+            "Need help? Type /help for instructions."
+        )
+
 async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle invalid inputs (text, stickers, etc.)"""
     await update.message.reply_text(
@@ -308,6 +342,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reanalyze", reanalyze_command))
+    app.add_handler(CommandHandler("askresults", askresults_command))
     
     # Add message handlers
     app.add_handler(MessageHandler(filters.VIDEO, handle_image))
