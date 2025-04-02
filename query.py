@@ -121,7 +121,7 @@ def summarize_vital_signs(user_id: int) -> str:
         period_start = datetime.fromisoformat(measurements['period']['start'])
         period_end = datetime.fromisoformat(measurements['period']['end'])
         
-        prompt = f"""As a medical AI assistant, please analyze this vital signs history and provide a summary for a caregiver:
+        prompt = f"""Analyze these vital signs and provide a clear, concise summary for a caregiver. Do not use any special formatting or markdown:
 
 Period: From {period_start.strftime('%Y-%m-%d %H:%M')} to {period_end.strftime('%Y-%m-%d %H:%M')}
 Number of Measurements: {measurements['count']}
@@ -162,14 +162,14 @@ Keep the response clear and simple for non-medical caregivers."""
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=800
+            max_tokens=600  # Reduced for more concise responses
         )
 
         return response.choices[0].message.content
 
     except Exception as e:
         logger.error(f"Error generating vital signs summary: {str(e)}")
-        return "I apologize, but I'm unable to generate a summary at this moment. Please try again later or consult a healthcare professional for immediate concerns."
+        return "Unable to generate summary at this time. Please try again later."
 
 def doctor_summarize_vital_signs(user_id: int) -> str:
     """
@@ -191,11 +191,9 @@ def doctor_summarize_vital_signs(user_id: int) -> str:
         measurements = summary['measurements']
         period_start = datetime.fromisoformat(measurements['period']['start'])
         period_end = datetime.fromisoformat(measurements['period']['end'])
-        
-        # Calculate time span in days
         time_span = (period_end - period_start).days
         
-        prompt = f"""As a medical professional, please provide a clinical summary of this patient's remote vital signs monitoring data:
+        prompt = f"""As a medical professional, please provide a clinical summary of this patient's remote vital signs monitoring data. Use plain text only, no special formatting:
 
 Monitoring Period: {period_start.strftime('%Y-%m-%d %H:%M')} to {period_end.strftime('%Y-%m-%d %H:%M')} ({time_span} days)
 Number of Measurements: {measurements['count']}
@@ -243,16 +241,16 @@ Please format the response in a concise, clinical manner suitable for medical do
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a clinical decision support system providing medical summaries for healthcare professionals. Use appropriate medical terminology and focus on clinically relevant patterns and findings. Structure the response in a format familiar to medical professionals."
+                    "content": "You are a clinical decision support system. Provide concise medical summaries using plain text only. Focus on key clinical findings and actionable recommendations."
                 },
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,  # Lower temperature for more consistent, clinical responses
-            max_tokens=1000
+            temperature=0.3,
+            max_tokens=800  # Reduced for more concise responses
         )
 
         return response.choices[0].message.content
 
     except Exception as e:
         logger.error(f"Error generating clinical vital signs summary: {str(e)}")
-        return "Unable to generate clinical summary at this time. Please try again later or refer to individual measurements."
+        return "Unable to generate clinical summary at this time. Please refer to individual measurements."
